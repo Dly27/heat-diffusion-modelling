@@ -14,7 +14,7 @@ Custom heat sources:
 
 Dynamic material properties:
 
-- User can set thermal conductivity 'k', density 'rho', heat capacity 'c' in a customised region using `set_material_region()`  
+- User can set thermal conductivity `k`, density `rho`, heat capacity `c` in a customised region using `set_material_region()`  
 - Thermal diffusivity calculated automatically  
 
 Various boundary conditions:
@@ -29,9 +29,9 @@ Realistic energy scaling:
 
 2D animation:
 
-- Live animation using 'matplotlib'
+- Live animation using `matplotlib`
 
 ## Requirements
 
 - Python 3.11  
-- 'numpy', 'matplotlib', 'scipy'  
+- `numpy`, `matplotlib`, `scipy`  
