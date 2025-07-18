@@ -1,33 +1,37 @@
-# 🔥 Heat Diffusion Modelling
+# 🔥 Heat diffusion modelling
 
-A Python implementation of the 2D heat equation to simulate heat diffusion on a surface using finite difference methods.
+Implementation of the heat equation to model heat diffusion in a 2D surface.
 
 ## Features
 
-### Custom Heat Sources
-- `stationary_gaussian()`: Fixed-position Gaussian heat source.
-- `lateral_gaussian()`: Horizontally oscillating Gaussian source.
-- `circular_gaussian()`: Gaussian source moving in circular motion.
-- `uniform()`: Constant heat applied over the entire surface.
-- `pulsed()`: Periodic on-off Gaussian heat source.
+Custom heat sources:
 
-### Dynamic Material Properties
-- Assign thermal conductivity `k`, density `rho`, and heat capacity `c` in any custom region using `set_material_region()`.
-- Thermal diffusivity `alpha` is computed automatically as `alpha = k / (rho * c)`.
+- `stationary_gaussian()`: Gaussian heat source which has a fixed position  
+- `lateral_gaussian()`: Gaussian heat source which oscillates horizontally  
+- `circular_gaussian()`: Gaussian heat source which moves in circular motion  
+- `uniform()`: Heat source which is constant over the surface  
+- `pulsed()`: Heat sources which pulses every fixed period  
 
-### Boundary Conditions
-- Supports **Dirichlet** (fixed temperature) and **Neumann** (zero-gradient) boundary types.
-- Easily extendable for additional boundary conditions.
+Dynamic material properties:
 
-### Realistic Energy Scaling
-- Heat sources can be scaled based on physical power input (e.g. sunlight).
-- Temperature changes are computed from energy input, material density, and specific heat capacity.
+- User can set thermal conductivity 'k', density 'rho', heat capacity 'c' in a customised region using `set_material_region()`  
+- Thermal diffusivity calculated automatically  
 
-### 2D Animation
-- Live animation of the temperature evolution using `matplotlib.animation`.
+Various boundary conditions:
+
+- Currently supports Dirichlet (fixed temperature) and Neumann (zero gradient) boundary conditions
+- More boundary options to be implemented  
+
+Realistic energy scaling:
+
+- Heat sources can be physically scaled to simulate real world heat sources i.e sunlight  
+- Temperature increase is derived from power input and material properties  
+
+2D animation:
+
+- Live animation using 'matplotlib'
 
 ## Requirements
 
-- Python 3.11
-- `numpy`, `matplotlib`, `scipy`
-
+- Python 3.11  
+- 'numpy', 'matplotlib', 'scipy'  
