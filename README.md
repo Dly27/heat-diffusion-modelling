@@ -15,7 +15,7 @@ A Python implementation of the 2D heat equation to simulate heat diffusion on a 
 - Assign thermal conductivity `k`, density `rho`, and heat capacity `c` in any custom region using `set_material_region()`.
 - Thermal diffusivity `alpha` is computed automatically as `alpha = k / (rho * c)`.
 
-### 🚧 Boundary Conditions
+### Boundary Conditions
 - Supports **Dirichlet** (fixed temperature) and **Neumann** (zero-gradient) boundary types.
 - Easily extendable for additional boundary conditions.
 
