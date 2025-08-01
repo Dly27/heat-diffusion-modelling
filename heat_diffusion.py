@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
-from scipy.ndimage import laplace
 
 
 class ThermalSource:
@@ -50,6 +49,10 @@ class ThermalSource:
             return np.zeros_like(X)
 
     def get_value(self, X, Y, t):
+        """
+        Returns the thermal source function to be used based on the source selected by the user
+        :return: Function
+        """
         method_map = {
             "stationary_gaussian": lambda: self.stationary_gaussian(X, Y),
             "lateral_gaussian": lambda: self.lateral_gaussian(X, Y, t),
@@ -76,13 +79,30 @@ class Grid:
         self.X, self.Y = np.meshgrid(x, y)
         self.sources = []
         self.alpha_matrix = None
-        self.k_matrix = None
         self.rho_matrix = None
         self.c_matrix = None
-        self.diffuse_matrix = None
+        self.alpha_x_matrix = None
+        self.alpha_y_matrix = None
+        self.kx_matrix = None
+        self.ky_matrix = None
+
+    def set_initial_temperature(self, temperature):
+        """
+        Sets the initial temperature of the grid
+        """
+        self.temp_matrix[:] = temperature
 
 
     def set_boundaries(self, left, right, top, bottom, boundary_type):
+        """
+        Sets the boundary conditions of the grid
+        :param left: Value on left boundary
+        :param right: Value on right boundary
+        :param top: Value on top boundary
+        :param bottom: Value on bottom boundary
+        :param boundary_type: The boundary type to set
+        :return: None
+        """
         if boundary_type == "dirichlet":
             self.temp_matrix[:, 0] = left
             self.temp_matrix[:, -1] = right
@@ -95,31 +115,78 @@ class Grid:
             self.temp_matrix[:, 0] = self.temp_matrix[:, 1]
             self.temp_matrix[:, -1] = self.temp_matrix[:, -2]
 
-    def create_alpha_matrix(self, k, rho, c):
-        self.k_matrix = np.ones_like(self.temp_matrix) * k
+    def create_alpha_matrix(self, kx, ky, rho, c):
+        """
+        Create the alpha matrix based on the parameters inputted
+        :param kx: Diffusitivity in x direction
+        :param ky: Diffusitivity in y direction
+        :param rho: Density
+        :param c: Specific heat capacity
+        :return: None
+        """
         self.rho_matrix = np.ones_like(self.temp_matrix) * rho
         self.c_matrix = np.ones_like(self.temp_matrix) * c
-        self.alpha_matrix = self.k_matrix / (self.rho_matrix * self.c_matrix)
         self.diffuse_matrix = self.alpha_matrix[1:-1, 1:-1] * self.dt / self.dx ** 2
 
-    def set_material_region(self, region_mask_fn, k=None, rho=None, c=None):
+        self.kx_matrix = np.ones_like(self.temp_matrix) * kx
+        self.ky_matrix = np.ones_like(self.temp_matrix) * ky
+
+        self.alpha_x_matrix = np.ones_like(self.temp_matrix) * (kx / (rho * c))
+        self.alpha_y_matrix = np.ones_like(self.temp_matrix) * (ky / (rho * c))
+
+    def set_material_region(self, region_mask_fn, kx=None, ky=None, rho=None, c=None):
+        """
+        Set the alpha matrix of a specific region based on a function given by the user
+        :param kx: Diffusitivity in x direction
+        :param ky: Diffusitivity in y direction
+        :param rho: Density
+        :param c: Specific heat capacity
+        :param region_mask_fn: The region of the grid the user will set a new alpha value
+        :return: None
+        """
         mask = region_mask_fn(self.X, self.Y)
-        if k is not None:
-            self.k_matrix[mask] = k
+        if kx is not None:
+            self.alpha_x_matrix[mask] = kx
+        if ky is not None:
+            self.alpha_y_matrix[mask] = ky
         if rho is not None:
             self.rho_matrix[mask] = rho
         if c is not None:
             self.c_matrix[mask] = c
-        self.alpha_matrix = self.k_matrix / (self.rho_matrix * self.c_matrix)
+
+        self.alpha_x_matrix[mask] = self.kx_matrix[mask] / (self.rho_matrix[mask] * self.c_matrix[mask])
+        self.alpha_y_matrix[mask] = self.ky_matrix[mask] / (self.rho_matrix[mask] * self.c_matrix[mask])
 
     def add_source(self, source):
+        """
+        Add a new thermal source to the grid
+        :param source: The thermal source to be added
+        :return: None
+        """
         self.sources.append(source)
 
     def update(self, t):
+        """
+        Updates the temperature matrix using the explicit finite difference method and thermal source values
+        :param t: Current time in the simulation
+        :return: None
+        """
         temp_matrix_new = self.temp_matrix.copy()
-        laplacian = laplace(self.temp_matrix, mode="nearest")
-        temp_matrix_new[1:-1, 1:-1] +=  self.diffuse_matrix * laplacian[1:-1, 1:-1]
 
+        T = self.temp_matrix
+        T_new = T.copy()
+
+        # Finite differences
+        lap_x = (T[1:-1, 2:] - 2 * T[1:-1, 1:-1] + T[1:-1, :-2]) / self.dx ** 2
+        lap_y = (T[2:, 1:-1] - 2 * T[1:-1, 1:-1] + T[:-2, 1:-1]) / self.dy ** 2
+
+        # Directional diffusivity
+        alpha_x = self.alpha_x_matrix[1:-1, 1:-1]
+        alpha_y = self.alpha_y_matrix[1:-1, 1:-1]
+
+        T_new[1:-1, 1:-1] += self.dt * (alpha_x * lap_x + alpha_y * lap_y)
+
+        # Add thermal sources
         source_sum = np.zeros_like(self.temp_matrix)
         for source in self.sources:
             source_sum += source.get_value(self.X, self.Y, t)
@@ -138,7 +205,8 @@ if __name__ == "__main__":
     )
 
     # Set initial and boundary temperature
-    g.temp_matrix[:] =0
+    g.set_initial_temperature(temperature=0)
+
     g.set_boundaries(
         left=0,
         right=0,
@@ -148,7 +216,7 @@ if __name__ == "__main__":
     )
 
     # Use water properties
-    g.create_alpha_matrix(k=1, rho=1000, c=4180)
+    g.create_alpha_matrix(kx=1, ky=2, rho=1000, c=4180)
 
 
     source_power = 1000  # W/m² (1000 similar to sunlight intensity)
