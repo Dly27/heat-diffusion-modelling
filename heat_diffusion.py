@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
-
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 class ThermalSource:
     def __init__(self,
@@ -70,11 +70,11 @@ class Grid:
         self.dy = step
         self.dt = dt
         self.nt = nt
-        self.temp_matrix = None
         self.nx = int(width / step)
         self.ny = int(height / step)
-        self.temp_matrix = np.zeros((self.nx, self.ny))
         x = np.linspace(0, self.width, self.nx)
+        self.temp_matrix_old = np.zeros((self.nx, self.ny))
+        self.temp_matrix_new = np.zeros((self.nx, self.ny))
         y = np.linspace(0, self.height, self.ny)
         self.X, self.Y = np.meshgrid(x, y)
         self.sources = []
@@ -90,7 +90,8 @@ class Grid:
         """
         Sets the initial temperature of the grid
         """
-        self.temp_matrix[:] = temperature
+        self.temp_matrix_new[:] = temperature
+        self.temp_matrix_old[:] = temperature
 
 
     def set_boundaries(self, left, right, top, bottom, boundary_type):
@@ -104,16 +105,24 @@ class Grid:
         :return: None
         """
         if boundary_type == "dirichlet":
-            self.temp_matrix[:, 0] = left
-            self.temp_matrix[:, -1] = right
-            self.temp_matrix[0, :] = bottom
-            self.temp_matrix[-1, :] = top
+            self.temp_matrix_old[:, 0] = left
+            self.temp_matrix_old[:, -1] = right
+            self.temp_matrix_old[0, :] = bottom
+            self.temp_matrix_old[-1, :] = top
+            self.temp_matrix_new[:, 0] = left
+            self.temp_matrix_new[:, -1] = right
+            self.temp_matrix_new[0, :] = bottom
+            self.temp_matrix_new[-1, :] = top
 
         elif boundary_type == "zero_gradient_neumann":
-            self.temp_matrix[0, :] = self.temp_matrix[1, :]
-            self.temp_matrix[-1, :] = self.temp_matrix[-2, :]
-            self.temp_matrix[:, 0] = self.temp_matrix[:, 1]
-            self.temp_matrix[:, -1] = self.temp_matrix[:, -2]
+            self.temp_matrix_old[0, :] = self.temp_matrix_old[1, :]
+            self.temp_matrix_old[-1, :] = self.temp_matrix_old[-2, :]
+            self.temp_matrix_old[:, 0] = self.temp_matrix_old[:, 1]
+            self.temp_matrix_old[:, -1] = self.temp_matrix_old[:, -2]
+            self.temp_matrix_new[0, :] = self.temp_matrix_new[1, :]
+            self.temp_matrix_new[-1, :] = self.temp_matrix_new[-2, :]
+            self.temp_matrix_new[:, 0] = self.temp_matrix_new[:, 1]
+            self.temp_matrix_new[:, -1] = self.temp_matrix_new[:, -2]
 
     def create_alpha_matrix(self, kx, ky, rho, c):
         """
@@ -124,15 +133,14 @@ class Grid:
         :param c: Specific heat capacity
         :return: None
         """
-        self.rho_matrix = np.ones_like(self.temp_matrix) * rho
-        self.c_matrix = np.ones_like(self.temp_matrix) * c
-        self.diffuse_matrix = self.alpha_matrix[1:-1, 1:-1] * self.dt / self.dx ** 2
+        self.rho_matrix = np.ones_like(self.temp_matrix_old) * rho
+        self.c_matrix = np.ones_like(self.temp_matrix_old) * c
 
-        self.kx_matrix = np.ones_like(self.temp_matrix) * kx
-        self.ky_matrix = np.ones_like(self.temp_matrix) * ky
+        self.kx_matrix = np.ones_like(self.temp_matrix_old) * kx
+        self.ky_matrix = np.ones_like(self.temp_matrix_old) * ky
 
-        self.alpha_x_matrix = np.ones_like(self.temp_matrix) * (kx / (rho * c))
-        self.alpha_y_matrix = np.ones_like(self.temp_matrix) * (ky / (rho * c))
+        self.alpha_x_matrix = self.kx_matrix / (self.rho_matrix * self.c_matrix)
+        self.alpha_y_matrix = self.ky_matrix / (self.rho_matrix * self.c_matrix)
 
     def set_material_region(self, region_mask_fn, kx=None, ky=None, rho=None, c=None):
         """
@@ -171,27 +179,32 @@ class Grid:
         :param t: Current time in the simulation
         :return: None
         """
-        temp_matrix_new = self.temp_matrix.copy()
+        T = self.temp_matrix_old
+        T_new = self.temp_matrix_new
 
-        T = self.temp_matrix
-        T_new = T.copy()
-
-        # Finite differences
         lap_x = (T[1:-1, 2:] - 2 * T[1:-1, 1:-1] + T[1:-1, :-2]) / self.dx ** 2
         lap_y = (T[2:, 1:-1] - 2 * T[1:-1, 1:-1] + T[:-2, 1:-1]) / self.dy ** 2
 
-        # Directional diffusivity
         alpha_x = self.alpha_x_matrix[1:-1, 1:-1]
         alpha_y = self.alpha_y_matrix[1:-1, 1:-1]
 
-        T_new[1:-1, 1:-1] += self.dt * (alpha_x * lap_x + alpha_y * lap_y)
+        T_new[1:-1, 1:-1] = T[1:-1, 1:-1] + self.dt * (alpha_x * lap_x + alpha_y * lap_y)
 
-        # Add thermal sources
-        source_sum = np.zeros_like(self.temp_matrix)
+        source_sum = np.zeros_like(self.temp_matrix_old)
+
+        """
+        with ProcessPoolExecutor() as executor:
+            futures = [executor.submit(source.get_value, self.X, self.Y, t) for source in self.sources]
+
+            for future in as_completed(futures):
+                source_sum += future.result()
+        """
+
         for source in self.sources:
             source_sum += source.get_value(self.X, self.Y, t)
 
-        self.temp_matrix = temp_matrix_new + self.dt * source_sum
+        T_new += self.dt * source_sum
+        self.temp_matrix_old, self.temp_matrix_new = self.temp_matrix_new, self.temp_matrix_old
 
 
 if __name__ == "__main__":
@@ -244,13 +257,13 @@ if __name__ == "__main__":
     def animate_func_fixed_scale(frame):
         current_time = frame * g.dt  # convert frame count to seconds
         g.update(t=current_time)
-        im.set_array(g.temp_matrix)
+        im.set_array(g.temp_matrix_old)
         return [im]
 
 
     fig, ax = plt.subplots()
     im = ax.imshow(
-        g.temp_matrix,
+        g.temp_matrix_old,
         cmap='hot',
         interpolation='nearest',
         vmin=0,
